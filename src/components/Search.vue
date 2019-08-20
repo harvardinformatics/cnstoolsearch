@@ -15,10 +15,10 @@
     <v-card-text>
       <v-treeview :items="items" :search="search" :filter="filter" :open.sync="open">
         <template v-slot:prepend="{ item }">
-          <v-icon
+          <!-- <v-icon
             v-if="item.children"
             v-text="`mdi-${item.id === 1 ? 'home-variant' : 'folder-network'}`"
-          ></v-icon>
+          ></v-icon> -->
         </template>
       </v-treeview>
     </v-card-text>
@@ -26,6 +26,8 @@
 </template>
 
 <script>
+import _ from 'lodash';
+
 export default {
 	data: () => ({
 		allData: [],
@@ -38,60 +40,92 @@ export default {
   	}),
   	methods: {
 	  	async getAndFormatData() {
-            await this.getCategories()
-            await this.getToolPageNumber().then(toolPageNumber => this.getTools(toolPageNumber))
-            await this.addSuperCategories()
-            await this.addToolsToSubCategories()
-            await this.addSubCategories()
-            console.log(this.items)
+            // await this.getCategories()
+            this.getAndFormatTools()
+                .then(toolsDict => this.getAndFormatCategories(toolsDict))
+                .then(categoriesDict => this.generateItems(categoriesDict))
+                .then(items => this.items = items)
+
+                // .then(toolsArray => this.formatTools(toolsArray))
+            // await this.addSuperCategories()
+            // await this.addToolsToSubCategories()
+            // await this.addSubCategories()
+            // console.log(this.items)
         },
-        addSuperCategories() {
-            this.categories.forEach(cat => {
-                if (["admin", "news", "research", "uncategorized"].includes(cat.slug)) return;
-                if (cat.parent == 0) {
-                    cat['children'] = []
-                    this.items.push(cat)
-                }
-            })
-        },
-        addToolsToSubCategories() {
-            this.tools.forEach(tool => {
-                this.categories.forEach(cat => {
-                    if (tool.parent == cat.id) {
-                        cat['children'] = []
-                        cat['children'].push(tool)
-                    }
-                })
-            })
-        },
-        addSubCategories() {
-            this.items.forEach(item => {
-                this.categories.forEach(cat => {
-                    if (cat.parent == item.id) {
-                        item['children'].push(cat)
-                    }
-                })
-            })
-        },
-		getCategories() {
-            fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/categories?per_page=50')
-                .then(response => response.json())
-                .then(categories => this.categories = categories)
-        },
-        getToolPageNumber() {
-            return fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/tool?per_page=1')
+        async getAndFormatTools() {
+            let queries = []
+            let toolsDict = Object.create({});
+            
+            // Determine how many tools pages there are
+            const toolPageNumber = await fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/tool?per_page=1')
                 .then(response => response.headers.get('X-WP-Total'))
                 .then(data => Math.ceil(data / 100))
-        },
-        async getTools(toolPageNumber) {
-            let queries = []
+            
+            
             for (let i = 1; i <= toolPageNumber; i++) {
                 queries.push(`https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/tool?per_page=100&page=${i}`)
             }
-            await Promise.all(queries.map(url => fetch(url)
+            
+            let toolsArrays = await Promise.all(queries.map(url => fetch(url)
                 .then(response => response.json())
-                .then(tools => tools.forEach(t => this.tools.push(tools)))
             ))
+
+            let allTools = await toolsArrays.flat()
+
+            allTools.forEach(t => {
+                t.categories.forEach(c => {
+                    if (!_.has(toolsDict, c)) {
+                        toolsDict[c] = []
+                    }
+                    let obj = {"1": "2"}
+                    // let minTool = this.generateMinimizedTool(t)
+                    toolsDict[c].push(obj)
+                })
+            })
+            return toolsDict
+        },
+        generateMinimizedTool(tool) {
+            let minTool = Object.create({})
+            minTool.id = tool.id
+            minTool.link = tool.link
+            // minTool.title = tool.title
+            return minTool
+        },
+        async getAndFormatCategories(toolsDict) {
+            console.log(toolsDict)
+            let subCategoriesDict = Object.create({});
+            const categories = await fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/categories?per_page=100')
+                .then(response => response.json())
+            categories.forEach(c => {
+                Object.keys(toolsDict).forEach(k => {
+                    if (c.id == k) {
+                        if (c.parent != 0) {
+                            c['children'] = toolsDict[k]
+                        } else {
+                            c['children'] = []
+                        }
+                        subCategoriesDict[c.id] = c
+                    }
+                })
+            })
+            return subCategoriesDict
+        },
+        generateItems(categoriesDict) {
+            let items = [];
+            for (var id in categoriesDict) {
+                let cat = categoriesDict[id]
+                if (cat.parent != 0) {
+                    categoriesDict[cat.parent].children.push(cat)
+                }
+            }
+            for (var id in categoriesDict) {
+                let cat = categoriesDict[id]
+                if (cat.parent == 0) {
+                    items.push(cat)
+                }
+            }
+            return items
+
         }
   	},
   	computed: {
