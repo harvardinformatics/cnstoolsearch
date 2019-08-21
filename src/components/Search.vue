@@ -1,21 +1,30 @@
 <template>
-  <v-card class="mx-auto" max-width="1000">
-    <v-sheet class="pa-4 primary">
+  <v-card class="mx-auto square" max-width="1000" flat>
+    <v-flex class="header">CNS Tool Search</v-flex>
+    <v-sheet class="pa-4 square" color='#EFEFEF'>
       <v-text-field
         v-model="search"
-        label="Search All CNS Tools"
+        label="Start typing the name of the tool you're looking for..."
         flat
         solo-inverted
         hide-details
         clearable
         clear-icon="mdi-close-circle-outline"
+        background-color="white"
+        color="black"
       ></v-text-field>
     </v-sheet>
-    <v-card-text>
+        <v-progress-linear 
+            color="#31B2A3"
+            :active="loading"
+            :indeterminate="loading"
+            bottom 
+        ></v-progress-linear>
+    <v-card-text v-if="!loading">
       <v-treeview 
         :items="items" 
         :search="search" 
-        :filter="filter" 
+        :filter="filter"
         :open.sync="open"
         open-on-click
         dense
@@ -37,14 +46,12 @@ export default {
         items: [],
         filteredOpen: [],
 		open: [],
-		search: null,
-		caseSensitive: false
+        search: null,
+        loading: false
   	}),
   	methods: {
-        activate() {
-            alert("hello there!")
-        },
 	  	async generateItems() {
+            this.loading = true
             let items = []
             const tools = await this.getAndFormatTools()
             const categories = await this.getAndFormatCategories(tools)
@@ -134,6 +141,10 @@ export default {
         },
         removeDups(value, index, self) { 
             return self.indexOf(value) === index;
+        },
+        loadItems(items) {
+            this.items = items
+            this.loading = false
         }
   	},
   	computed: {
@@ -155,7 +166,7 @@ export default {
         },
     },
     beforeMount: function() {
-        this.generateItems().then(items => this.items = items)
+        this.generateItems().then(items => this.loadItems(items))
     }
 }
 </script>
@@ -167,4 +178,19 @@ export default {
         position: absolute;
         z-index: 100;
     }
+    .header {
+        background-color: #31B2A3;
+        text-align: center;
+        color: white;
+        height: 40px;
+        line-height: 40px;
+    }
+    .square {
+        border-radius: 0px;
+    }
+
+    input {
+        color: black !important;
+    }
+
 </style>
