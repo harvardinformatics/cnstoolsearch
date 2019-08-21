@@ -46,7 +46,7 @@ export default {
         items: [],
         filteredOpen: [],
 		open: [],
-        search: null,
+        search: "",
         loading: false
   	}),
   	methods: {
@@ -164,6 +164,11 @@ export default {
         filteredOpen: function () {
             this.open = this.filteredOpen.filter(this.removeDups)
         },
+        search: function (newSearch, oldSearch) {
+            if (newSearch == "" || newSearch == null) {
+                this.open = []
+            }
+        }
     },
     beforeMount: function() {
         this.generateItems().then(items => this.loadItems(items))
