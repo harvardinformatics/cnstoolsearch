@@ -10,15 +10,18 @@
         clearable
         clear-icon="mdi-close-circle-outline"
       ></v-text-field>
-      <v-checkbox v-model="caseSensitive" dark hide-details label="Case sensitive search"></v-checkbox>
     </v-sheet>
     <v-card-text>
-      <v-treeview :items="items" :search="search" :filter="filter" :open.sync="open">
-        <template v-slot:prepend="{ item }">
-          <!-- <v-icon
-            v-if="item.children"
-            v-text="`mdi-${item.id === 1 ? 'home-variant' : 'folder-network'}`"
-          ></v-icon> -->
+      <v-treeview 
+        :items="items" 
+        :search="search" 
+        :filter="filter" 
+        :open.sync="open"
+        open-on-click
+        dense
+        >
+        <template v-slot:append="{ item }">
+            <a class="tool-link" v-if="item.isTool" :href="item.link" target="_blank"></a>
         </template>
       </v-treeview>
     </v-card-text>
@@ -27,119 +30,141 @@
 
 <script>
 import _ from 'lodash';
+import { format } from 'path';
 
 export default {
 	data: () => ({
-		allData: [],
-		categories: [],	
-		tools: [],
-		items: [],
-		open: [1, 2],
+        items: [],
+        filteredOpen: [],
+		open: [],
 		search: null,
 		caseSensitive: false
   	}),
   	methods: {
-	  	async getAndFormatData() {
-            // await this.getCategories()
-            this.getAndFormatTools()
-                .then(toolsDict => this.getAndFormatCategories(toolsDict))
-                .then(categoriesDict => this.generateItems(categoriesDict))
-                .then(items => this.items = items)
+        activate() {
+            alert("hello there!")
+        },
+	  	async generateItems() {
+            let items = []
+            const tools = await this.getAndFormatTools()
+            const categories = await this.getAndFormatCategories(tools)
 
-                // .then(toolsArray => this.formatTools(toolsArray))
-            // await this.addSuperCategories()
-            // await this.addToolsToSubCategories()
-            // await this.addSubCategories()
-            // console.log(this.items)
+            categories.forEach(cat => {
+                if (cat.parent == 0) {
+                    items.push(cat)
+                }
+            })
+
+            items.forEach(item => {
+                categories.forEach(cat => {
+                    if (item.id == cat.parent) {
+                        item.children.push(cat)
+                    }
+                })
+            })
+
+            return items
+            
         },
         async getAndFormatTools() {
-            let queries = []
-            let toolsDict = Object.create({});
-            
+            let queries = [];
+            let formattedTools = []
+
             // Determine how many tools pages there are
             const toolPageNumber = await fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/tool?per_page=1')
                 .then(response => response.headers.get('X-WP-Total'))
                 .then(data => Math.ceil(data / 100))
             
-            
             for (let i = 1; i <= toolPageNumber; i++) {
                 queries.push(`https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/tool?per_page=100&page=${i}`)
             }
             
-            let toolsArrays = await Promise.all(queries.map(url => fetch(url)
+            let toolsArray = await Promise.all(queries.map(url => fetch(url)
                 .then(response => response.json())
             ))
 
-            let allTools = await toolsArrays.flat()
+            let allTools = toolsArray.flat()
 
-            allTools.forEach(t => {
-                t.categories.forEach(c => {
-                    if (!_.has(toolsDict, c)) {
-                        toolsDict[c] = []
-                    }
-                    let obj = {"1": "2"}
-                    // let minTool = this.generateMinimizedTool(t)
-                    toolsDict[c].push(obj)
-                })
+            await allTools.forEach(tool => {
+                let formTool = Object.create({})
+                formTool.id = tool.id
+                formTool.categories = tool.categories
+                formTool.link = tool.link
+                formTool.name = tool.title.rendered
+                formTool.slug = tool.slug
+                formTool.tags = tool.tags
+                formTool.isTool = true
+                formattedTools.push(formTool)
             })
-            return toolsDict
+
+            return await formattedTools
         },
-        generateMinimizedTool(tool) {
-            let minTool = Object.create({})
-            minTool.id = tool.id
-            minTool.link = tool.link
-            // minTool.title = tool.title
-            return minTool
-        },
-        async getAndFormatCategories(toolsDict) {
-            console.log(toolsDict)
-            let subCategoriesDict = Object.create({});
+
+        async getAndFormatCategories(tools) {
+            let formattedCategories = []
             const categories = await fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/categories?per_page=100')
-                .then(response => response.json())
-            categories.forEach(c => {
-                Object.keys(toolsDict).forEach(k => {
-                    if (c.id == k) {
-                        if (c.parent != 0) {
-                            c['children'] = toolsDict[k]
-                        } else {
-                            c['children'] = []
-                        }
-                        subCategoriesDict[c.id] = c
+                .then(response => response.json()) 
+
+            await categories.forEach(cat => {
+                if (["admin", "news", "uncategorized", "research"].includes(cat.slug)) return
+                let formCat = Object.create({})
+                formCat['children'] = this.getChildrenOfCategory(tools, cat)
+                formCat.id = cat.id
+                formCat.link = cat.link
+                formCat.parent = cat.parent
+                formCat.name = cat.name
+                formCat.slug = cat.slug
+                formCat.isTool = false
+                formattedCategories.push(formCat)
+            })
+            return formattedCategories
+        },
+
+        getChildrenOfCategory(tools, cat) {
+            let childrenOfCategory = []
+            if (cat.parent != 0)
+                tools.forEach(tool => {
+                    if (tool.categories.includes(cat.id)) {
+                        tool.parent = cat.id
+                        tool.grandparent = cat.parent
+                        childrenOfCategory.push(tool)
                     }
                 })
-            })
-            return subCategoriesDict
+            return childrenOfCategory
         },
-        generateItems(categoriesDict) {
-            let items = [];
-            for (var id in categoriesDict) {
-                let cat = categoriesDict[id]
-                if (cat.parent != 0) {
-                    categoriesDict[cat.parent].children.push(cat)
-                }
-            }
-            for (var id in categoriesDict) {
-                let cat = categoriesDict[id]
-                if (cat.parent == 0) {
-                    items.push(cat)
-                }
-            }
-            return items
-
+        removeDups(value, index, self) { 
+            return self.indexOf(value) === index;
         }
   	},
   	computed: {
     	filter() {
-      		return this.caseSensitive
-				? (item, search, textKey) => item[textKey].indexOf(search) > -1
-				: undefined;
+      		return (item, search, textKey) => {
+                    let name = item[textKey].toLowerCase().replace(/\s/g, '');
+                    let result = name.indexOf(search.toLowerCase()) > -1
+                    if (result && item.parent && item.grandparent) {
+                        this.filteredOpen.push(item.parent)
+                        this.filteredOpen.push(item.grandparent)
+                    }
+                    return result
+                }
     		}
-  	},
-  	mounted: function() {
-        this.getAndFormatData()
-  	}
-};
+    },
+    watch: {
+        filteredOpen: function () {
+            this.open = this.filteredOpen.filter(this.removeDups)
+        },
+    },
+    beforeMount: function() {
+        this.generateItems().then(items => this.items = items)
+    }
+}
 </script>
 
 <style>
+    .tool-link {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        z-index: 100;
+    }
 </style>
