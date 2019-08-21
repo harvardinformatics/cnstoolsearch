@@ -155,7 +155,7 @@ export default {
   	computed: {
     	filter() {
       		return (item, search, textKey) => {
-                    if (item.parent == 0) return
+                    if (!item.isTool) return
                     let name = item[textKey].toLowerCase().replace(/\s/g, '');
                     let result = name.indexOf(search.toLowerCase()) > -1
                     if (result && item.parent && item.grandparent) {
