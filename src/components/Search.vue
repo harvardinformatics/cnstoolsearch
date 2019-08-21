@@ -29,6 +29,9 @@
         open-on-click
         dense
         >
+        <template v-slot:prepend="{ item }">
+            <h3 v-if="item.isTool">-</h3>
+        </template>
         <template v-slot:append="{ item }">
             <a class="tool-link" v-if="item.isTool" :href="item.link" target="_blank"></a>
         </template>
@@ -39,14 +42,13 @@
 
 <script>
 import _ from 'lodash';
-import { format } from 'path';
 
 export default {
 	data: () => ({
         items: [],
         filteredOpen: [],
 		open: [],
-        search: "",
+        search: null,
         loading: false
   	}),
   	methods: {
@@ -81,6 +83,7 @@ export default {
             const toolPageNumber = await fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/tool?per_page=1')
                 .then(response => response.headers.get('X-WP-Total'))
                 .then(data => Math.ceil(data / 100))
+                .catch(err => console.error(err))
             
             for (let i = 1; i <= toolPageNumber; i++) {
                 queries.push(`https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/tool?per_page=100&page=${i}`)
@@ -88,6 +91,7 @@ export default {
             
             let toolsArray = await Promise.all(queries.map(url => fetch(url)
                 .then(response => response.json())
+                .catch(err => console.error(err))
             ))
 
             let allTools = toolsArray.flat()
@@ -111,6 +115,7 @@ export default {
             let formattedCategories = []
             const categories = await fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/categories?per_page=100')
                 .then(response => response.json()) 
+                .catch(err => console.error(err))
 
             await categories.forEach(cat => {
                 if (["admin", "news", "uncategorized", "research"].includes(cat.slug)) return
@@ -150,6 +155,7 @@ export default {
   	computed: {
     	filter() {
       		return (item, search, textKey) => {
+                    if (item.parent == 0) return
                     let name = item[textKey].toLowerCase().replace(/\s/g, '');
                     let result = name.indexOf(search.toLowerCase()) > -1
                     if (result && item.parent && item.grandparent) {
