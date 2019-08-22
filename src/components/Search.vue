@@ -55,15 +55,19 @@ export default {
 	  	async generateItems() {
             this.loading = true
             let items = []
+            // Get all tools
             const tools = await this.getAndFormatTools()
+            // Get all parents (including parents and grandparents)
             const categories = await this.getAndFormatCategories(tools)
 
+            // Add grandparent categories to items
             categories.forEach(cat => {
                 if (cat.parent == 0) {
                     items.push(cat)
                 }
             })
 
+            // Add parent categories to grandparents in items
             items.forEach(item => {
                 categories.forEach(cat => {
                     if (item.id == cat.parent) {
@@ -75,6 +79,7 @@ export default {
             return items
             
         },
+        
         async getAndFormatTools() {
             let queries = [];
             let formattedTools = []
@@ -85,38 +90,47 @@ export default {
                 .then(data => Math.ceil(data / 100))
                 .catch(err => console.error(err))
             
+            // Add each url to a queries array
             for (let i = 1; i <= toolPageNumber; i++) {
                 queries.push(`https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/tool?per_page=100&page=${i}`)
             }
             
+            // Get an array of arrays of tools
             let toolsArray = await Promise.all(queries.map(url => fetch(url)
                 .then(response => response.json())
                 .catch(err => console.error(err))
             ))
 
+            // Flatten all tools arrays into a single array
             let allTools = toolsArray.flat()
 
-            // Determine how many tools pages there are
+            // Determine how many media pages there are
             const thumbnailPageNumber = await fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/media?per_page=1')
                 .then(response => response.headers.get('X-WP-Total'))
                 .then(data => Math.ceil(data / 100))
                 .catch(err => console.error(err))
             
+            // Add each url to a queries array
             for (let i = 1; i <= thumbnailPageNumber; i++) {
                 queries.push(`https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/media?per_page=100&page=${i}`)
             }
             
+            // Get an array of arrays of tool media objects
             let thumbnailsArray = await Promise.all(queries.map(url => fetch(url)
                 .then(response => response.json())
                 .catch(err => console.error(err))
             ))
 
+            // Flatten all media arrays into a single array
             let allThumbnails = thumbnailsArray.flat()
+
+            // Loop through tools array and generate new minimal tool objets
             await allTools.forEach(tool => {
                 let formTool = Object.create({})
                 formTool.id = tool.id
                 formTool.categories = tool.categories
                 formTool.link = tool.link
+                // Get thumbnail for this tool from thumbnails array
                 formTool.thumbnail = this.getToolThumbnail(allThumbnails, tool.id)
                 formTool.name = tool.title.rendered
                 formTool.slug = tool.slug
@@ -130,13 +144,17 @@ export default {
 
         async getAndFormatCategories(tools) {
             let formattedCategories = []
+            
+            // Get all categories
             const categories = await fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/categories?per_page=100')
                 .then(response => response.json()) 
                 .catch(err => console.error(err))
 
+            // Loop through categories array and generate new minimal category objects
             await categories.forEach(cat => {
                 if (["admin", "news", "uncategorized", "research"].includes(cat.slug)) return
                 let formCat = Object.create({})
+                // Get children of this category
                 formCat.children = this.getChildrenOfCategory(tools, cat)
                 formCat.id = cat.id
                 formCat.link = cat.link
@@ -151,7 +169,9 @@ export default {
 
         getChildrenOfCategory(tools, cat) {
             let childrenOfCategory = []
+            // If category is not a grandparent
             if (cat.parent != 0)
+            // Check if tool belongs to the category
                 tools.forEach(tool => {
                     if (tool.categories.includes(cat.id)) {
                         tool.parent = cat.id
@@ -175,18 +195,25 @@ export default {
         removeDups(value, index, self) { 
             return self.indexOf(value) === index;
         },
+
+        // Finalize loading process
         loadItems(items) {
             this.items = items
             this.loading = false
         }
   	},
   	computed: {
+        // Custom filter function
     	filter() {
       		return (item, search, textKey) => {
+                    // If it's not a tool, it shouldn't be a part of the search
                     if (!item.isTool) return
+                    // Make item info lowercase and remove spaces
                     let name = item[textKey].toLowerCase().replace(/\s/g, '');
+                    // Check if search is in name
                     let result = name.indexOf(search.toLowerCase()) > -1
                     if (result && item.parent && item.grandparent) {
+                        // If found, add item parents to filteredopen, which will trigger the open functionality
                         this.filteredOpen.push(item.parent)
                         this.filteredOpen.push(item.grandparent)
                     }
@@ -196,8 +223,11 @@ export default {
     },
     watch: {
         filteredOpen: function () {
+            // As filteredOpen changes, this will update existing open array
+            // Existing open array cannot be mutated directly due to Vue reactivity issues
             this.open = this.filteredOpen.filter(this.removeDups)
         },
+        // If the search box is made empty, close all items
         search: function (newSearch, oldSearch) {
             if (newSearch == "" || newSearch == null) {
                 this.open = []
