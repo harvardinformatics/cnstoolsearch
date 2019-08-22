@@ -27,13 +27,13 @@
         :filter="filter"
         :open.sync="open"
         open-on-click
-        dense
         >
         <template v-slot:prepend="{ item }">
             <h3 v-if="item.isTool">-</h3>
         </template>
         <template v-slot:append="{ item }">
             <a class="tool-link" v-if="item.isTool" :href="item.link" target="_blank"></a>
+            <img v-if="item.thumbnail" class="thumbnail" :src="item.thumbnail" alt="">
         </template>
       </v-treeview>
     </v-card-text>
@@ -96,11 +96,28 @@ export default {
 
             let allTools = toolsArray.flat()
 
+            // Determine how many tools pages there are
+            const thumbnailPageNumber = await fetch('https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/media?per_page=1')
+                .then(response => response.headers.get('X-WP-Total'))
+                .then(data => Math.ceil(data / 100))
+                .catch(err => console.error(err))
+            
+            for (let i = 1; i <= thumbnailPageNumber; i++) {
+                queries.push(`https://cns1.rc.fas.harvard.edu/wp-json/wp/v2/media?per_page=100&page=${i}`)
+            }
+            
+            let thumbnailsArray = await Promise.all(queries.map(url => fetch(url)
+                .then(response => response.json())
+                .catch(err => console.error(err))
+            ))
+
+            let allThumbnails = thumbnailsArray.flat()
             await allTools.forEach(tool => {
                 let formTool = Object.create({})
                 formTool.id = tool.id
                 formTool.categories = tool.categories
                 formTool.link = tool.link
+                formTool.thumbnail = this.getToolThumbnail(allThumbnails, tool.id)
                 formTool.name = tool.title.rendered
                 formTool.slug = tool.slug
                 formTool.tags = tool.tags
@@ -120,7 +137,7 @@ export default {
             await categories.forEach(cat => {
                 if (["admin", "news", "uncategorized", "research"].includes(cat.slug)) return
                 let formCat = Object.create({})
-                formCat['children'] = this.getChildrenOfCategory(tools, cat)
+                formCat.children = this.getChildrenOfCategory(tools, cat)
                 formCat.id = cat.id
                 formCat.link = cat.link
                 formCat.parent = cat.parent
@@ -143,6 +160,17 @@ export default {
                     }
                 })
             return childrenOfCategory
+        },
+        getToolThumbnail(thumbnails, id) {
+            let url;
+            thumbnails.forEach(thumb => {
+                if (thumb.post == id && _.has(thumb, 'media_details.sizes.thumbnail.source_url')) {
+                    const thumbnail = thumb['media_details']['sizes']['thumbnail']['source_url']
+                    url = thumbnail
+                    return
+                }
+            })
+            return url
         },
         removeDups(value, index, self) { 
             return self.indexOf(value) === index;
@@ -202,6 +230,12 @@ export default {
 
     input {
         color: black !important;
+    }
+
+    .thumbnail {
+        width: 40px;
+        height: 40px;
+        border-radius: 5px;
     }
 
 </style>
